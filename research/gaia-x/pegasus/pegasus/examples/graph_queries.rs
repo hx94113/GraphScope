@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 use graph_store::prelude::*;
-use pegasus::api::{CorrelatedSubTask, Count, Limit, Map, Sink, Filter};
+use pegasus::api::{CorrelatedSubTask, Count, Filter, Limit, Map, Sink};
 use pegasus::JobConf;
 
 lazy_static! {
@@ -28,35 +28,35 @@ fn main() {
             } else {
                 input.input_from(vec![].into_iter())?
             };
-            src.flat_map(|v| Ok(
-                (*GRAPH)
+            src.flat_map(|v| {
+                Ok((*GRAPH)
                     .get_in_vertices(v as DefaultId, Some(&vec![0]))
-                    .map(|lv| (lv.get_id() as u64, lv.get_label()[0]))
-            ))?
-                .filter(|(_, l)| Ok(*l == 2))?
-                .map(|(v, _)| Ok(v))?
-                // .limit(1000)?
-                .apply(|sub| {
-                    sub.repartition(|v| Ok(*v))
-                        .flat_map(|v| {
-                            Ok((*GRAPH)
-                                .get_out_vertices(v as DefaultId, None)
-                                .map(|v| (v.get_id() as u64, v.get_label()[0])))
-                        })?
-                        .filter(|(_, l)| Ok(*l == 3))?
-                        .map(|(v, _)| Ok(v))?
-                        .repartition(|v| Ok(*v))
-                        .flat_map(|v| {
-                            Ok((*GRAPH)
-                                .get_out_vertices(v as DefaultId, None)
-                                .map(|v| v.get_id() as u64))
-                        })?
-                        .limit(1)?
-                        .count()
-                })?
-                .filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
-                .count()?
-                .sink_into(output)
+                    .map(|lv| (lv.get_id() as u64, lv.get_label()[0])))
+            })?
+            .filter(|(_, l)| Ok(*l == 2))?
+            .map(|(v, _)| Ok(v))?
+            // .limit(1000)?
+            .apply(|sub| {
+                sub.repartition(|v| Ok(*v))
+                    .flat_map(|v| {
+                        Ok((*GRAPH)
+                            .get_out_vertices(v as DefaultId, None)
+                            .map(|v| (v.get_id() as u64, v.get_label()[0])))
+                    })?
+                    .filter(|(_, l)| Ok(*l == 3))?
+                    .map(|(v, _)| Ok(v))?
+                    .repartition(|v| Ok(*v))
+                    .flat_map(|v| {
+                        Ok((*GRAPH)
+                            .get_out_vertices(v as DefaultId, None)
+                            .map(|v| v.get_id() as u64))
+                    })?
+                    .limit(1)?
+                    .count()
+            })?
+            .filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
+            .count()?
+            .sink_into(output)
         }
     })
     .expect("build job failure");

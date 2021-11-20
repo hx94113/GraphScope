@@ -13,9 +13,10 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use pegasus::api::{CorrelatedSubTask, Count, HasAny, Map, Sink, Limit, Filter};
-use pegasus::JobConf;
 use std::collections::HashMap;
+
+use pegasus::api::{CorrelatedSubTask, Count, Filter, HasAny, Limit, Map, Sink};
+use pegasus::JobConf;
 
 #[test]
 fn apply_x_map_flatmap_count_x_test() {
@@ -178,9 +179,11 @@ fn apply_x_flatmap_any_x_test() {
     assert_eq!(count, 2000);
 }
 
-fn read_test_data<T: Eq + Default + std::hash::Hash + std::str::FromStr>(filename: &str) -> HashMap<T, Vec<T>> {
-    use std::io::{BufReader, BufRead};
+fn read_test_data<T: Eq + Default + std::hash::Hash + std::str::FromStr>(
+    filename: &str,
+) -> HashMap<T, Vec<T>> {
     use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
     let mut map: HashMap<T, Vec<T>> = HashMap::new();
     let reader = BufReader::new(File::open(filename).unwrap());
@@ -189,7 +192,9 @@ fn read_test_data<T: Eq + Default + std::hash::Hash + std::str::FromStr>(filenam
         let mut data = line.split('|');
         let data_str = data.next().unwrap();
         let v = data_str.parse::<T>().unwrap_or_default();
-        let nbr: Vec<T> = data.map(|s|s.parse::<T>().unwrap_or_default()).collect();
+        let nbr: Vec<T> = data
+            .map(|s| s.parse::<T>().unwrap_or_default())
+            .collect();
         map.entry(v)
             .or_insert_with(Vec::new)
             .extend(nbr.into_iter());
@@ -197,18 +202,21 @@ fn read_test_data<T: Eq + Default + std::hash::Hash + std::str::FromStr>(filenam
     map
 }
 
-
 #[macro_use]
 extern crate lazy_static;
 
-#[derive(Hash, PartialEq, Eq, Default, Debug, Copy, Clone,)]
-pub struct Tuple (u64, u8);
+#[derive(Hash, PartialEq, Eq, Default, Debug, Copy, Clone)]
+pub struct Tuple(u64, u8);
 
 impl std::str::FromStr for Tuple {
     type Err = std::num::ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.strip_prefix('(').unwrap().strip_suffix(')').unwrap();
+        let s = s
+            .strip_prefix('(')
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
         let mut splitter = s.split(", ");
         let s1 = splitter.next().unwrap();
         let s2 = splitter.next().unwrap();
@@ -246,22 +254,18 @@ fn apply_flatmap_limit_unexpected_results1() {
             } else {
                 input.input_from(vec![].into_iter())?
             };
-            src
-                .apply(|sub| {
-                    sub.repartition(|v| Ok(*v))
-                        .flat_map(|v| {
-                            Ok(MAP1.get(&v).unwrap().iter()
-                                .map(|x| *x))
-                        })?
-                        .limit(1)?
-                        .count()
-                })?
-                .filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
-                .count()?
-                .sink_into(output)
+            src.apply(|sub| {
+                sub.repartition(|v| Ok(*v))
+                    .flat_map(|v| Ok(MAP1.get(&v).unwrap().iter().map(|x| *x)))?
+                    .limit(1)?
+                    .count()
+            })?
+            .filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
+            .count()?
+            .sink_into(output)
         }
     })
-        .expect("build job failure");
+    .expect("build job failure");
 
     while let Some(Ok(cnt)) = result.next() {
         assert_eq!(cnt, expected_cnt);
@@ -284,17 +288,12 @@ fn apply_flatmap_limit_unexpected_results2() {
             } else {
                 input.input_from(vec![].into_iter())?
             };
-            src
-                .repartition(|v| Ok(*v))
-                .flat_map(move |v| {
-                    Ok(
-                        MAP2.get(&v).unwrap().iter().map(|x| *x)
-                    )
-                })?
+            src.repartition(|v| Ok(*v))
+                .flat_map(move |v| Ok(MAP2.get(&v).unwrap().iter().map(|x| *x)))?
                 .limit(expected_cnt as u32)?
                 .apply(move |sub| {
                     sub.repartition(|v| Ok(*v))
-                        .flat_map(|v|Ok(MAP2.get(&v).unwrap().iter().map(|x| *x)))?
+                        .flat_map(|v| Ok(MAP2.get(&v).unwrap().iter().map(|x| *x)))?
                         .repartition(|v| Ok(*v))
                         .flat_map(|v| Ok(MAP2.get(&v).unwrap().iter().map(|x| *x)))?
                         .limit(1)?
@@ -305,11 +304,10 @@ fn apply_flatmap_limit_unexpected_results2() {
                 .sink_into(output)
         }
     })
-        .expect("build job failure");
+    .expect("build job failure");
 
-    while let Some(Ok(cnt)) = result.next() {
-        assert_eq!(cnt, expected_cnt);
-    }
+    let cnt = result.next().unwrap().unwrap();
+    assert_eq!(cnt, expected_cnt);
 }
 
 #[test]
@@ -323,33 +321,42 @@ fn apply_flatmap_limit_unexpected_results3() {
         move |input, output| {
             let src = if index == 0 {
                 input.input_from(
-                    MAP3.get(&Tuple(src_v, 1)).unwrap()
+                    MAP3.get(&Tuple(src_v, 1))
+                        .unwrap()
                         .iter()
-                        .map(|t| (t.0, t.1))
+                        .map(|t| (t.0, t.1)),
                 )?
             } else {
                 input.input_from(vec![].into_iter())?
             };
-            src.flat_map(|v| Ok(
-                MAP3.get(&v.into()).unwrap().iter().map(|t| (t.0, t.1)))
-            )?
-                // .map(|(v, _)| Ok(v))?
-                .apply(|sub| {
-                    sub.repartition(|v| Ok(v.0))
-                        .flat_map(|v| {
-                            Ok(MAP3.get(&v.into()).unwrap().iter().map(|t| (t.0, t.1)))
-                        })?
-                        .map(|x| Ok(x))?
-                        .filter(|t| Ok(t.1 == 3))?
-                        .limit(1)?
-                        .count()
-                })?
-                //.filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
-                .count()?
-                .sink_into(output)
+            src.flat_map(|v| {
+                Ok(MAP3
+                    .get(&v.into())
+                    .unwrap()
+                    .iter()
+                    .map(|t| (t.0, t.1)))
+            })?
+            // .map(|(v, _)| Ok(v))?
+            .apply(|sub| {
+                sub.repartition(|v| Ok(v.0))
+                    .flat_map(|v| {
+                        Ok(MAP3
+                            .get(&v.into())
+                            .unwrap()
+                            .iter()
+                            .map(|t| (t.0, t.1)))
+                    })?
+                    .map(|x| Ok(x))?
+                    .filter(|t| Ok(t.1 == 3))?
+                    .limit(1)?
+                    .count()
+            })?
+            //.filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
+            .count()?
+            .sink_into(output)
         }
     })
-        .expect("build job failure");
+    .expect("build job failure");
 
     while let Some(Ok(cnt)) = result.next() {
         println!("{:?}", cnt);
@@ -367,38 +374,51 @@ fn apply_flatmap_limit_unexpected_results4() {
         move |input, output| {
             let src = if index == 0 {
                 input.input_from(
-                    MAP4.get(&Tuple(src_v, 1)).unwrap()
+                    MAP4.get(&Tuple(src_v, 1))
+                        .unwrap()
                         .iter()
-                        .map(|t| (t.0, t.1))
+                        .map(|t| (t.0, t.1)),
                 )?
             } else {
                 input.input_from(vec![].into_iter())?
             };
-            src.flat_map(|v| Ok(
-                MAP4.get(&v.into()).unwrap().iter().map(|t| (t.0, t.1)))
-            )?
-                // .map(|(v, _)| Ok(v))?
-                .apply(|sub| {
-                    sub.repartition(|v| Ok(v.0))
-                        .flat_map(|v| {
-                            Ok(MAP4.get(&v.into()).unwrap().iter().map(|t| (t.0, t.1)))
-                        })?
-                        .repartition(|(v, _)| Ok(*v))
-                        .map(|x| Ok(x))?
-                        .filter(|t| Ok(t.1 == 3))?
-                        .repartition(|v| Ok(v.0))
-                        .flat_map(|v| {
-                            Ok(MAP4.get(&v.into()).unwrap().iter().map(|t| (t.0, t.1)))
-                        })?
-                        .limit(1)?
-                        .count()
-                })?
-                //.filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
-                .count()?
-                .sink_into(output)
+            src.flat_map(|v| {
+                Ok(MAP4
+                    .get(&v.into())
+                    .unwrap()
+                    .iter()
+                    .map(|t| (t.0, t.1)))
+            })?
+            // .map(|(v, _)| Ok(v))?
+            .apply(|sub| {
+                sub.repartition(|v| Ok(v.0))
+                    .flat_map(|v| {
+                        Ok(MAP4
+                            .get(&v.into())
+                            .unwrap()
+                            .iter()
+                            .map(|t| (t.0, t.1)))
+                    })?
+                    .repartition(|(v, _)| Ok(*v))
+                    .map(|x| Ok(x))?
+                    .filter(|t| Ok(t.1 == 3))?
+                    .repartition(|v| Ok(v.0))
+                    .flat_map(|v| {
+                        Ok(MAP4
+                            .get(&v.into())
+                            .unwrap()
+                            .iter()
+                            .map(|t| (t.0, t.1)))
+                    })?
+                    .limit(1)?
+                    .count()
+            })?
+            //.filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
+            .count()?
+            .sink_into(output)
         }
     })
-        .expect("build job failure");
+    .expect("build job failure");
 
     while let Some(Ok(cnt)) = result.next() {
         println!("{:?}", cnt);

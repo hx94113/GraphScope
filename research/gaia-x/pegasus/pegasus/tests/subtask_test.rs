@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use pegasus::api::{CorrelatedSubTask, Count, Filter, HasAny, Limit, Map, Sink};
+use pegasus::api::{Collect, CorrelatedSubTask, Count, Filter, HasAny, Limit, Map, Sink};
 use pegasus::JobConf;
 
 #[test]
@@ -411,7 +411,7 @@ fn apply_flatmap_limit_unexpected_results4() {
                             .map(|t| (t.0, t.1)))
                     })?
                     .limit(1)?
-                    .count()
+                    .collect::<Vec<_>>()
             })?
             //.filter_map(|(v, cnt)| if cnt == 0 { Ok(None) } else { Ok(Some(v)) })?
             .count()?
